@@ -126,7 +126,7 @@
 
     <script>
         // Matter.js モジュール
-        const { Engine, Render, Runner, Bodies, Composite, Events, Body, Vector } = Matter;
+        const { Engine, Render, Runner, Bodies, Composite, Events, Vector } = Matter; // Bodyを除外
 
         // --- ゲーム設定 ---
         const FRUITS_DATA = [
@@ -134,15 +134,16 @@
             { name: "いちご", radius: 16, color: "#FF69B4", emoji: "🍓", score: 3, next: 2 },
             { name: "ぶどう", radius: 20, color: "#EE82EE", emoji: "🍇", score: 6, next: 3 },
             { name: "デコポン", radius: 25, color: "#FFA500", emoji: "🍊", score: 10, next: 4 },
-            { name: "柿", radius: 30, color: "#FF8C00", emoji: "🍑", score: 15, next: 5 },
+            { name: "柿", radius: 30, color: "#FF8C00", emoji: "🍑", score: 15, next: 5 }, // Using peach emoji as placeholder for Kaki
             { name: "りんご", radius: 38, color: "#FF4500", emoji: "🍎", score: 21, next: 6 },
             { name: "梨", radius: 45, color: "#ADFF2F", emoji: "🍐", score: 28, next: 7 },
             { name: "もも", radius: 55, color: "#FFDAB9", emoji: "🍑", score: 36, next: 8 },
             { name: "パイナップル", radius: 65, color: "#FFFF00", emoji: "🍍", score: 45, next: 9 },
             { name: "メロン", radius: 75, color: "#90EE90", emoji: "🍈", score: 55, next: 10 },
-            { name: "スイカ", radius: 90, color: "#32CD32", emoji: "🍉", score: 66, next: null }
+            { name: "スイカ", radius: 90, color: "#32CD32", emoji: "🍉", score: 66, next: null } // Watermelon
         ];
 
+        // HTML要素の取得
         const canvasContainer = document.getElementById('canvasContainer');
         const canvas = document.getElementById('gameCanvas');
         const scoreDisplay = document.getElementById('score');
@@ -152,48 +153,45 @@
         const finalScoreDisplay = document.getElementById('finalScore');
         const restartButton = document.getElementById('restartButton');
 
+        // Matter.js関連の変数
         let engine, world, runner;
-        let currentFruit = null;
-        let nextFruitType = 0;
-        let score = 0;
-        let canDrop = true;
-        let gameWidth, gameHeight;
-        let ground, leftWall, rightWall;
-        let gameOverLineY;
-        let isGameOver = false;
+        // ゲームの状態に関する変数
+        let currentFruit = null; // 現在操作中のフルーツ
+        let nextFruitType = 0;   // 次に出現するフルーツのインデックス
+        let score = 0;           // 現在のスコア
+        let canDrop = true;      // フルーツをドロップできるかどうかのフラグ
+        let gameWidth, gameHeight; // ゲームエリアの幅と高さ
+        let ground, leftWall, rightWall; // 壁と地面のオブジェクト
+        let gameOverLineY;       // ゲームオーバーラインのY座標
+        let isGameOver = false;  // ゲームオーバー状態かどうかのフラグ
 
         // --- 初期化処理 ---
         function setupGame() {
+            // ゲーム状態のリセット
             isGameOver = false;
             score = 0;
             updateScoreDisplay();
-            gameOverPopup.classList.add('hidden');
+            gameOverPopup.classList.add('hidden'); // ゲームオーバーポップアップを隠す
 
-            // エンジンとワールドのクリア (存在する場合)
+            // 既存のMatter.jsインスタンスがあればクリア
             if (runner) Runner.stop(runner);
             if (engine) Engine.clear(engine);
-            if (world) Composite.clear(world, false);
+            if (world) Composite.clear(world, false); // ワールド内の物体もクリア
 
-
-            // レスポンシブなキャンバスサイズ設定
+            // キャンバスサイズのレスポンシブ設定
             const containerPadding = 2; // canvasContainerのborder等を考慮
             const containerWidth = canvasContainer.clientWidth - containerPadding * 2;
-
-            gameWidth = Math.min(containerWidth, 400);
+            gameWidth = Math.min(containerWidth, 400); // 最大幅400px
             gameHeight = gameWidth * 1.5; // 基本アスペクト比 (2:3)
 
             // 画面の高さに対する最大比率を考慮 (縦長すぎるのを防ぐ)
-            const maxViewportHeightRatio = 0.75; // iPhoneのツールバーなどを考慮して少し余裕をもたせる
+            const maxViewportHeightRatio = 0.75;
             const availableHeight = window.innerHeight * maxViewportHeightRatio;
-
             if (gameHeight > availableHeight) {
                 gameHeight = availableHeight;
                 gameWidth = gameHeight / 1.5;
             }
-            
-            // 最終的な幅がコンテナ幅を超えないように再調整
-            gameWidth = Math.min(gameWidth, containerWidth);
-
+            gameWidth = Math.min(gameWidth, containerWidth); // 最終的な幅がコンテナ幅を超えないように再調整
 
             canvas.width = gameWidth;
             canvas.height = gameHeight;
@@ -201,77 +199,89 @@
             canvasContainer.style.height = `${gameHeight}px`;
             canvasContainer.style.width = `${gameWidth + containerPadding * 2}px`;
 
-
-            gameOverLineY = gameHeight * 0.12;
+            // ゲームオーバーラインの位置設定
+            gameOverLineY = gameHeight * 0.12; // 上から12%の位置
             gameOverLineElement.style.top = `${gameOverLineY}px`;
 
+            // Matter.jsエンジンの作成
             engine = Engine.create({
-                gravity: { y: 0.6 },
-                enableSleeping: true
+                gravity: { y: 0.6 }, // 重力設定
+                enableSleeping: true  // 静止した物体をスリープさせてパフォーマンス向上
             });
             world = engine.world;
 
+            // 壁と地面の作成 (表示はカスタム描画で行うため、render.visibleはfalse)
             const wallThickness = 30;
-            ground = Bodies.rectangle(gameWidth / 2, gameHeight + wallThickness / 2 - 5, gameWidth + wallThickness*2 , wallThickness, { isStatic: true, label: "ground", render: { visible: false } }); //壁の外まで地面を伸ばす
-            leftWall = Bodies.rectangle(-wallThickness / 2, gameHeight / 2, wallThickness, gameHeight * 2, { isStatic: true, label: "wall", render: { visible: false } }); //壁を高くする
+            ground = Bodies.rectangle(gameWidth / 2, gameHeight + wallThickness / 2 - 5, gameWidth + wallThickness*2 , wallThickness, { isStatic: true, label: "ground", render: { visible: false } });
+            leftWall = Bodies.rectangle(-wallThickness / 2, gameHeight / 2, wallThickness, gameHeight * 2, { isStatic: true, label: "wall", render: { visible: false } });
             rightWall = Bodies.rectangle(gameWidth + wallThickness / 2, gameHeight / 2, wallThickness, gameHeight * 2, { isStatic: true, label: "wall", render: { visible: false } });
-            Composite.add(world, [ground, leftWall, rightWall]);
+            Composite.add(world, [ground, leftWall, rightWall]); // ワールドに壁と地面を追加
 
+            // Matter.jsのRunnerを作成・実行
             runner = Runner.create();
             Runner.run(runner, engine);
 
+            // 最初のフルーツの準備とスポーン
             prepareNextFruit();
             spawnDroppingFruit();
+            // イベントリスナーの設定
             setupEventListeners();
+            // ゲームループの開始
             gameLoop();
         }
 
+        // --- フルーツオブジェクトの作成 ---
         function createFruit(x, y, typeIndex, options = {}) {
             const fruitData = FRUITS_DATA[typeIndex];
-            if (!fruitData) return null;
-            return Bodies.circle(x, y, fruitData.radius, {
-                label: "fruit",
+            if (!fruitData) return null; // 不正なインデックスの場合はnullを返す
+            // Matter.Body を直接使用して円形の物体を作成
+            return Matter.Bodies.circle(x, y, fruitData.radius, {
+                label: "fruit", // 物体のラベル
                 restitution: 0.3, // 反発係数
                 friction: 0.4,    // 摩擦係数
                 density: 0.001 + (fruitData.radius / 5000), // 半径に応じて密度を少し変える
-                fruitType: typeIndex,
-                render: { fillStyle: fruitData.color }, // Matter.jsのデバッグレンダリング用
-                ...options // isSleeping: true などが渡される
+                fruitType: typeIndex, // フルーツの種類を示すインデックスを保持
+                render: { fillStyle: fruitData.color }, // Matter.jsのデバッグレンダリング用の色
+                ...options // isSleeping: true など、追加のオプションを適用
             });
         }
 
+        // --- 次のフルーツを準備 ---
         function prepareNextFruit() {
             // スコアが低い間は小さいフルーツが出やすくする
             const randomPool = score < 50 ? FRUITS_DATA.slice(0, 3) : FRUITS_DATA.slice(0, 5);
             nextFruitType = FRUITS_DATA.indexOf(randomPool[Math.floor(Math.random() * randomPool.length)]);
-            updateNextFruitDisplay();
+            updateNextFruitDisplay(); // 次のフルーツ表示を更新
         }
 
+        // --- 次のフルーツ表示を更新 ---
         function updateNextFruitDisplay() {
             const fruitData = FRUITS_DATA[nextFruitType];
             nextFruitDisplay.textContent = fruitData.emoji;
-            nextFruitDisplay.style.fontSize = `${Math.max(18, fruitData.radius * 0.7)}px`; // iPhoneでの見やすさを考慮
+            nextFruitDisplay.style.fontSize = `${Math.max(18, fruitData.radius * 0.7)}px`; // 絵文字サイズ調整
         }
 
+        // --- 操作中のフルーツをスポーン ---
         function spawnDroppingFruit() {
-            if (isGameOver) return;
-            canDrop = true;
+            if (isGameOver) return; // ゲームオーバー時はスポーンしない
+            canDrop = true; // ドロップ可能にする
             const fruitData = FRUITS_DATA[nextFruitType];
             // ドロップ位置を壁際に余裕を持たせる
             const dropX = Math.max(fruitData.radius + 5, Math.min(gameWidth - fruitData.radius - 5, gameWidth / 2));
-            // フルーツを少し低い位置からスポーンさせる
+            // フルーツを少し低い位置からスポーンさせる (isSleeping: true で最初は静止)
             currentFruit = createFruit(dropX, fruitData.radius * 1.5, nextFruitType, { isSleeping: true });
             if (currentFruit) {
-                 Composite.add(world, currentFruit);
+                 Composite.add(world, currentFruit); // ワールドに現在のフルーツを追加
             }
-            prepareNextFruit();
+            prepareNextFruit(); // 次のフルーツを準備
         }
         
-        // グローバルスコープでリスナー関数を保持（削除用）
+        // イベントリスナーの参照を保持 (削除用)
         let boundHandleMouseMove, boundHandleTouchMove, boundHandleDropClick, boundHandleDropTouch;
 
+        // --- イベントリスナーの設定 ---
         function setupEventListeners() {
-            // 既存のリスナーを確実に削除
+            // 既存のリスナーを確実に削除 (再起動時の重複を防ぐ)
             if (boundHandleMouseMove) canvasContainer.removeEventListener('mousemove', boundHandleMouseMove);
             if (boundHandleTouchMove) canvasContainer.removeEventListener('touchmove', boundHandleTouchMove);
             if (boundHandleDropClick) canvasContainer.removeEventListener('click', boundHandleDropClick);
@@ -281,67 +291,78 @@
             // 新しいリスナー関数を束縛して保持
             boundHandleMouseMove = handleMouseMove.bind(this);
             boundHandleTouchMove = handleTouchMove.bind(this);
-            boundHandleDropClick = handleDrop.bind(this);
+            boundHandleDropClick = handleDrop.bind(this); // clickとtouchendで同じ関数を呼ぶ
             boundHandleDropTouch = handleDrop.bind(this);
 
+            // マウス・タッチ操作のイベントリスナーを追加
             canvasContainer.addEventListener('mousemove', boundHandleMouseMove);
             canvasContainer.addEventListener('touchmove', boundHandleTouchMove, { passive: false }); // スクロール防止のためpassive:false
             canvasContainer.addEventListener('click', boundHandleDropClick);
-            canvasContainer.addEventListener('touchend', boundHandleDropTouch); // スマホではtouchendの方が反応が良い場合がある
+            canvasContainer.addEventListener('touchend', boundHandleDropTouch);
             
-            Events.off(engine, 'collisionStart', handleCollisions); // 既存の衝突リスナーを削除してから再登録
+            // Matter.jsの衝突イベントリスナー (既存を削除してから再登録)
+            Events.off(engine, 'collisionStart', handleCollisions);
             Events.on(engine, 'collisionStart', handleCollisions);
 
+            // リスタートボタンのイベントリスナー
             restartButton.addEventListener('click', setupGame);
         }
 
+        // --- マウス移動処理 ---
         function handleMouseMove(event) {
             if (!currentFruit || !canDrop || isGameOver) return;
             const rect = canvas.getBoundingClientRect();
-            let x = event.clientX - rect.left;
+            let x = event.clientX - rect.left; // キャンバス内のX座標を取得
             moveCurrentFruit(x);
         }
 
+        // --- タッチ移動処理 ---
         function handleTouchMove(event) {
             if (!currentFruit || !canDrop || isGameOver || !event.touches.length) return;
             event.preventDefault(); // 画面スクロールを防止
             const rect = canvas.getBoundingClientRect();
-            let x = event.touches[0].clientX - rect.left;
+            let x = event.touches[0].clientX - rect.left; // キャンバス内のX座標を取得
             moveCurrentFruit(x);
         }
 
+        // --- 操作中フルーツの移動 ---
         function moveCurrentFruit(x) {
             const fruitData = FRUITS_DATA[currentFruit.fruitType];
-            // フルーツが壁際ギリギリにならないように調整
+            // フルーツが壁際ギリギリにならないようにX座標を制限
             const newX = Math.max(fruitData.radius + 2, Math.min(gameWidth - fruitData.radius - 2, x));
-            Body.setPosition(currentFruit, { x: newX, y: currentFruit.position.y });
+            // Matter.Body を直接使用してフルーツの位置を設定
+            Matter.Body.setPosition(currentFruit, { x: newX, y: currentFruit.position.y });
         }
 
+        // --- フルーツのドロップ処理 ---
         function handleDrop() {
-            if (!currentFruit || !canDrop || isGameOver) return;
-            canDrop = false; // フルーツ操作を無効化
+            console.log("handleDrop called. currentFruit:", currentFruit, "canDrop:", canDrop, "isGameOver:", isGameOver); // デバッグ用ログ
+            if (!currentFruit || !canDrop || isGameOver) return; // 条件外なら処理しない
+            canDrop = false; // ドロップ操作を一時的に無効化
 
-            // ★修正点: フルーツを確実に動的(dynamic)にし、覚醒(awake)させる
-            Body.setStatic(currentFruit, false);   // 静的フラグを解除
-            Body.setSleeping(currentFruit, false); // スリープ状態を解除して物理演算の対象にする
+            // Matter.Body を明示的に使用してフルーツを動的(dynamic)にし、覚醒(awake)させる
+            Matter.Body.setStatic(currentFruit, false);   // 静的フラグを解除
+            Matter.Body.setSleeping(currentFruit, false); // スリープ状態を解除して物理演算の対象にする
+            console.log("Fruit state after setSleeping. isStatic:", currentFruit.isStatic, "isSleeping:", currentFruit.isSleeping, "Body module:", Matter.Body); // デバッグ用ログ
 
             // 次のフルーツをスポーンするまでのクールダウン
             setTimeout(() => {
                 if (!isGameOver) {
                     spawnDroppingFruit();
                 }
-            }, 600); // クールダウンを少し短縮
+            }, 600);
         }
 
+        // --- 衝突処理 ---
         function handleCollisions(event) {
-            if (isGameOver) return;
-            const pairs = event.pairs;
+            if (isGameOver) return; // ゲームオーバー時は処理しない
+            const pairs = event.pairs; // 衝突したペアを取得
             pairs.forEach(pair => {
                 const bodyA = pair.bodyA;
                 const bodyB = pair.bodyB;
 
+                // 両方ともフルーツで、同じ種類、かつスイカでない場合
                 if (bodyA.label === "fruit" && bodyB.label === "fruit") {
-                    // 同じ種類のフルーツで、かつスイカでない場合（スイカはそれ以上進化しない）
                     if (bodyA.fruitType === bodyB.fruitType && bodyA.fruitType !== null && FRUITS_DATA[bodyA.fruitType].next !== null) {
                         const type = bodyA.fruitType;
                         
@@ -354,6 +375,7 @@
                         Composite.remove(world, bodyA);
                         Composite.remove(world, bodyB);
 
+                        // 次の段階のフルーツを生成
                         const nextType = FRUITS_DATA[type].next;
                         const newFruitData = FRUITS_DATA[nextType];
                         // 合体位置は2つのフルーツの中間点
@@ -368,21 +390,22 @@
 
                         const newFruit = createFruit(spawnX, spawnY, nextType);
                         if (newFruit) {
-                            Composite.add(world, newFruit);
-                             // 合体直後のフルーツがすぐにスリープしないように少しだけ速度を与える (オプション)
-                            Body.setVelocity(newFruit, { x: (Math.random() - 0.5) * 0.1, y: -0.5 });
+                            Composite.add(world, newFruit); // 新しいフルーツをワールドに追加
+                            // Matter.Body を直接使用して合体直後のフルーツにわずかな速度を与える (オプション)
+                            Matter.Body.setVelocity(newFruit, { x: (Math.random() - 0.5) * 0.1, y: -0.5 });
                         }
 
-                        score += FRUITS_DATA[type].score * 2; // 合体によるスコア加算
-                        updateScoreDisplay();
+                        score += FRUITS_DATA[type].score * 2; // スコア加算
+                        updateScoreDisplay(); // スコア表示更新
                     }
                 }
             });
         }
 
+        // --- ゲームオーバー判定 ---
         function checkGameOver() {
             if (isGameOver) return;
-            const bodies = Composite.allBodies(world);
+            const bodies = Composite.allBodies(world); // ワールド内の全物体を取得
             for (let body of bodies) {
                 // フルーツがアクティブ（スリープしておらず、静的でもない）な場合
                 if (body.label === "fruit" && !body.isSleeping && !body.isStatic) {
@@ -402,11 +425,12 @@
             }
         }
         
+        // --- ゲームオーバー処理 ---
         function triggerGameOver() {
-            if (isGameOver) return;
+            if (isGameOver) return; // 既にゲームオーバーなら何もしない
             isGameOver = true;
             if (runner) Runner.stop(runner); // 物理エンジンを停止
-            finalScoreDisplay.textContent = score;
+            finalScoreDisplay.textContent = score; // 最終スコアを表示
             gameOverPopup.classList.remove('hidden'); // ゲームオーバーポップアップ表示
             // ドロップ待機中のフルーツがあれば消去
             if (currentFruit) {
@@ -415,12 +439,15 @@
             }
         }
 
+        // --- スコア表示更新 ---
         function updateScoreDisplay() {
             scoreDisplay.textContent = score;
         }
 
+        // --- メインゲームループ (描画処理) ---
         function gameLoop() {
             if (!isGameOver) {
+                // Engine.update(engine); // Runnerが実行しているので通常は不要
                 checkGameOver(); // 毎フレームゲームオーバーチェック
             }
 
@@ -437,9 +464,9 @@
             // ワールド内の全フルーツを描画
             const bodies = Composite.allBodies(world);
             bodies.forEach(body => {
-                if (body.label === "fruit" && body.fruitType !== undefined) {
+                if (body.label === "fruit" && body.fruitType !== undefined) { // fruitTypeプロパティを持つフルーツのみ描画
                     const fruitData = FRUITS_DATA[body.fruitType];
-                    if (!fruitData) return; // 安全策
+                    if (!fruitData) return; // 安全策: 不明なフルーツタイプはスキップ
 
                     ctx.beginPath();
                     ctx.arc(body.position.x, body.position.y, fruitData.radius, 0, Math.PI * 2);
@@ -464,10 +491,10 @@
                 }
             });
 
-            // ドロップ待機中のフルーツ（操作中のフルーツ）を描画
+            // ドロップ待機中のフルーツ（操作中のフルーツ）を描画 (半透明で)
             if (currentFruit && canDrop && !isGameOver && currentFruit.fruitType !== undefined) {
                 const fruitData = FRUITS_DATA[currentFruit.fruitType];
-                 if (!fruitData) return;
+                 if (!fruitData) return; // 安全策
 
                 ctx.save(); // 現在の描画状態を保存
                 ctx.globalAlpha = 0.7; // 半透明で描画
@@ -504,7 +531,8 @@
             requestAnimationFrame(gameLoop); // 次のフレームを要求
         }
 
-        // 色を明るくするヘルパー関数
+        // --- ヘルパー関数 ---
+        // 色を明るくする
         function lightenColor(hex, percent) {
             hex = hex.replace(/^#/, '');
             if (hex.length === 3) hex = hex.replace(/(.)/g, '$1$1');
@@ -516,7 +544,7 @@
             return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
         }
 
-        // 色を暗くするヘルパー関数
+        // 色を暗くする
         function darkenColor(hex, percent) {
             hex = hex.replace(/^#/, '');
             if (hex.length === 3) hex = hex.replace(/(.)/g, '$1$1');
@@ -528,12 +556,13 @@
             return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
         }
         
+        // --- ウィンドウリサイズ処理 ---
         let resizeTimeout;
         function handleResize() {
-            // 画面サイズが変わった場合、ゲームを再初期化
-            // 状態保持は複雑なので、リスタートで対応
-            if (engine) {
+            // 画面サイズが変わった場合、ゲームを再初期化 (状態保持は複雑なのでリスタートで対応)
+            if (engine) { // ゲームが既に開始されている場合のみ
                 console.log("Resizing, restarting game.");
+                // 既存の Matter.js インスタンスとイベントリスナーをクリーンアップ
                 if (runner) Runner.stop(runner);
                 if (engine) Engine.clear(engine);
                 if (world) Composite.clear(world, false);
@@ -542,8 +571,8 @@
                 if (boundHandleTouchMove) canvasContainer.removeEventListener('touchmove', boundHandleTouchMove);
                 if (boundHandleDropClick) canvasContainer.removeEventListener('click', boundHandleDropClick);
                 if (boundHandleDropTouch) canvasContainer.removeEventListener('touchend', boundHandleDropTouch);
-                // engineがクリアされるので、Events.off(engine, ...) は不要になるか、
-                // engine参照が残っているなら呼ぶべきだが、ここではengine自体をクリアしているので大丈夫なはず
+                // engineがクリアされるので、Events.off(engine, ...) は呼ばなくても良い場合があるが、念のため
+                // if (engine) Events.off(engine, 'collisionStart', handleCollisions);
             }
             // デバウンス処理: リサイズイベントが連続して発生するのを防ぐ
             clearTimeout(resizeTimeout);
@@ -556,7 +585,7 @@
         window.addEventListener('orientationchange', handleResize); // 画面回転時にも対応
 
         // --- ゲーム開始 ---
-        // DOMContentLoadedを待ってから初期化することで、要素が確実に読み込まれるようにする
+        // DOMContentLoadedを待ってから初期化することで、HTML要素が確実に読み込まれるようにする
         document.addEventListener('DOMContentLoaded', (event) => {
             setupGame();
         });
